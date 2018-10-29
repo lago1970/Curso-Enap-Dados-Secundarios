@@ -1,0 +1,399 @@
+---
+title: "Perfil COMEX Brasil"
+author: "Luiz Antonio Gouveia & Josue Araujo"
+date: "26/10/2018"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Objeto
+
+O objeto de análise neste relatório é a corrente de comércio exterior brasileiro, ou seja, as atividades de exportação e importação do setor produtivo nacional.
+
+A partir deste enquadramento, foram coletados e analisados dados sobre os principais produtos exportados e importados, origens e destinos (países parceiros) dos produtos comercializados e a evolução da balança comercial brasileira nos últimos 20 (vinte) anos.
+
+## Objetivos
+
+Este relatório analítico buscou responder as seguintes questões:
+
+<div class="green3">
+- Como evoluiu a balança comercial brasileira nos últimos 20 anos?
+- Quais são os principais produtos exportados e importados pelo Brasil?
+- Quais são os principais países parceiros do  comércio exterior brasileiro? 
+</div>
+
+
+## Contexto
+
+De acordo como o FMI, o Brasil figurou em nono lugar no ranking das maiores economias do mundo em 2018. Além de grande, a economia brasileira é razoavelmente diversificada e sofisticada tecnologicamente.
+
+A despeito dessas características positivas, a participação do nosso país no comércio mundial é ínfima, alcançando apenas 1,1% da movimentação global de produtos.
+
+Como o Brasil se insere na corrente de comércio global? Quem são seus parceiros e quais so principais produtos comercializados?
+
+São estas perguntas que o presente estudo pretende responder.
+
+
+## Método
+
+Todos os dados utilizados na presente análise foram coletados do portal de dados e estatísticas de comércio exterior do Ministério da Indústria, Comércio Exterior e Serviços - MDIC - ("http://comexstat.mdic.gov.br/pt/home"). 
+
+Foram acessadas as bases de dados de exportação e importação de produtos, de municípios exportadores/importadores e, por fim, as Tabelas de Correlações de Códigos e Classificações de produtos e países.
+
+Inicialmente, as bases de dados foram inspecionadas e foram descartadas aquelas variáveis que não interessavam à análise. Em seguida, foram gerados diversos dataframes para efeito de produção de tabelas e gráficos.
+
+Os dados foram organizados em torno de 3 (três) blocos de informação, quais sejam: balança comercial, principais produtos exportados/importados (pauta de produtos) e principais parceiros comerciais.
+
+A análise estatística dos dados limitou-se à descrição simples dos dados coletados e à explicação dos gráficos gerados.
+
+### Carregando os pacotes requeridos
+
+
+```{r, echo=FALSE}
+library(tidyverse)
+library(janitor)
+library(magrittr)
+
+```
+
+
+#### Carregando as bases de dados
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, cache=FALSE}
+
+Sys.setlocale("LC_ALL","pt_BR.UTF-8")
+
+# Base de dados de exportação
+brasil_expo <- read.csv("/Users/MAC/Documents/AMBIENTE R/Curso-Enap-Dados-Secundarios/Curso Enap Dados Secundarios/Projeto Luiz e Josue/Base de dados detalhada por NCM/EXP_COMPLETA.csv", sep = ";", encoding = "latin1")
+
+
+# Base de dados de importação
+brasil_impo <- read.csv("/Users/MAC/Documents/AMBIENTE R/Curso-Enap-Dados-Secundarios/Curso Enap Dados Secundarios/Projeto Luiz e Josue/Base de dados detalhada por NCM/IMP_COMPLETA.csv", sep = ";", encoding = "latin1") 
+
+
+# Bases de dados auxiliares
+
+metricas <- read.csv("http://www.mdic.gov.br/balanca/bd/tabelas/NCM_UNIDADE.csv", sep = ";", encoding = "latin1")
+
+ncm <- read.csv("http://www.mdic.gov.br/balanca/bd/tabelas/NCM.csv", sep = ";", encoding = "latin1")
+
+paises <- read.csv("http://www.mdic.gov.br/balanca/bd/tabelas/PAIS.csv", sep = ";", encoding = "latin1")
+
+municipios <- read.csv("http://www.mdic.gov.br/balanca/bd/tabelas/UF_MUN.csv", sep = ";", encoding = "latin1")
+
+estados <- read.csv("http://www.mdic.gov.br/balanca/bd/tabelas/UF.csv", sep = ";", encoding = "latin1")
+
+via_de_transporte <- read.csv("http://www.mdic.gov.br/balanca/bd/tabelas/VIA.csv", sep = ";", encoding = "latin1")
+
+categorias_produtos <- read.csv("http://www.mdic.gov.br/balanca/bd/tabelas/NCM_CGCE.csv", sep = ";", encoding = "latin1")
+
+```
+
+### Limpando as bases de dados  
+
+```{r, echo=TRUE, warning=FALSE, warning=FALSE}
+
+brasil_expo_alt <- brasil_expo %>%
+  filter(CO_ANO < 2018) %>%
+  select(-CO_URF, -QT_ESTAT)
+
+brasil_impo_alt <- brasil_impo %>%
+  filter(CO_ANO < 2018) %>%
+  select(-CO_URF, -QT_ESTAT)
+
+```
+
+
+### Manipulando os dados
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+# agrupando exportações por ano
+expo_ano <- brasil_expo_alt %>%
+  group_by(CO_ANO) %>%
+  summarise(Total_expo = sum(VL_FOB))
+
+# agrupando importações por ano
+impo_ano <- brasil_impo_alt %>%
+  group_by(CO_ANO) %>%
+  summarise(Total_impo = sum(as.numeric(VL_FOB)))
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# agrupando exportações por produto
+expo_produto <- brasil_expo_alt %>%
+  group_by(CO_NCM) %>%
+  summarise(Total_expo = sum(VL_FOB)/10^9) %>%
+             arrange(desc(Total_expo))
+
+# Identificando os nomes dos produtos exportados
+expo_produto <- left_join(expo_produto, ncm %>%
+                             select(CO_NCM, NO_NCM_POR), by = c("CO_NCM" = "CO_NCM"))
+
+# agrupando exportações por produto no ano de 2017
+expo_produto_2017 <- brasil_expo_alt %>%
+  group_by(CO_NCM) %>%
+  filter(CO_ANO == 2017) %>%
+  summarise(Total_expo = sum(VL_FOB)/10^9) %>%
+             arrange(desc(Total_expo))
+
+# Identificando os nomes dos produtos exportados 2017
+expo_produto_2017 <- left_join(expo_produto_2017, ncm %>%
+                             select(CO_NCM, NO_NCM_POR), by = c("CO_NCM" = "CO_NCM")) %>%
+  mutate(US_billions = round(expo_produto_2017$Total_expo, digits = 2))
+
+# Rankeando os dez principais produtos exportados em 2017
+principais_export_2017 <- dplyr::slice(expo_produto_2017, 1:10) %>%
+  separate(NO_NCM_POR, sep = ',', extra = 'drop', fill = 'right', into = c('NO_NCM_POR', 's2'))
+
+  
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# agrupando importações por produto
+impo_produto <- brasil_impo_alt %>%
+  group_by(CO_NCM) %>%
+  summarise(Total_impo = sum(as.numeric(VL_FOB)/10^9)) %>%
+             arrange(desc(Total_impo))
+
+# Identificando os nomes dos produtos importados
+impo_produto <- left_join(impo_produto, ncm %>%
+                             select(CO_NCM, NO_NCM_POR), by = c("CO_NCM" = "CO_NCM"))
+
+# agrupando importações por produto no ano de 2017
+impo_produto_2017 <- brasil_impo_alt %>%
+  group_by(CO_NCM) %>%
+  filter(CO_ANO == 2017) %>%
+  summarise(Total_impo = sum(VL_FOB)/10^9) %>%
+             arrange(desc(Total_impo))
+
+# Identificando os nomes dos produtos importados 2017
+impo_produto_2017 <- left_join(impo_produto_2017, ncm %>%
+                             select(CO_NCM, NO_NCM_POR), by = c("CO_NCM" = "CO_NCM")) %>%
+  mutate(US_billions = round(impo_produto_2017$Total_impo, digits = 2))
+
+
+# Rankeando os dez principais produtos importados em 2017
+principais_import_2017 <- dplyr::slice(impo_produto_2017, 1:10) %>%
+  separate(NO_NCM_POR, sep = ',', extra = 'drop', fill = 'right', into = c('NO_NCM_POR', 's2'))
+
+
+```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# agrupando exportações por país de destino
+expo_país <- brasil_expo_alt %>%
+  group_by(CO_PAIS) %>%
+  summarise(Total_expo = sum(VL_FOB)/10^9) %>%
+             arrange(desc(Total_expo))
+
+# Identificando os nomes dos países de destino
+expo_país <- left_join(expo_país, paises %>%
+                             select(CO_PAIS, NO_PAIS), by = c("CO_PAIS" = "CO_PAIS"))
+
+# agrupando exportações por país de destino no ano de 2017
+expo_pais_2017 <- brasil_expo_alt %>%
+  group_by(CO_PAIS) %>%
+  filter(CO_ANO == 2017) %>%
+  summarise(Total_expo = sum(VL_FOB)/10^9) %>%
+             arrange(desc(Total_expo))
+
+# Identificando os nomes dos paises de destino 2017
+expo_pais_2017 <- left_join(expo_pais_2017, paises %>%
+                             select(CO_PAIS, NO_PAIS), by = c("CO_PAIS" = "CO_PAIS")) %>%
+  mutate(US_billions = round(expo_pais_2017$Total_expo, digits = 2))
+
+# Rankeando os dez principais destinos em 2017
+expo_pais_2017 <- dplyr::slice(expo_pais_2017, 1:10)
+  
+
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# agrupando importações por país de origem
+impo_país <- brasil_impo_alt %>%
+  group_by(CO_PAIS) %>%
+  summarise(Total_impo = sum(as.numeric(VL_FOB))/10^9) %>%
+             arrange(desc(Total_impo))
+
+# Identificando os nomes dos países de origem
+impo_país <- left_join(impo_país, paises %>%
+                             select(CO_PAIS, NO_PAIS), by = c("CO_PAIS" = "CO_PAIS"))
+
+# agrupando importações por país de origem no ano de 2017
+impo_pais_2017 <- brasil_impo_alt %>%
+  group_by(CO_PAIS) %>%
+  filter(CO_ANO == 2017) %>%
+  summarise(Total_impo = sum(as.numeric(VL_FOB))/10^9) %>%
+             arrange(desc(Total_impo))
+
+# Identificando os nomes dos paises de origem 2017
+impo_pais_2017 <- left_join(impo_pais_2017, paises %>%
+                             select(CO_PAIS, NO_PAIS), by = c("CO_PAIS" = "CO_PAIS")) %>%
+  mutate(US_billions = round(impo_pais_2017$Total_impo, digits = 2))
+
+# Rankeando as dez principais origens em 2017
+impo_pais_2017 <- dplyr::slice(impo_pais_2017, 1:10)
+
+```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# Calculando o saldo da balança comercial brasileira
+
+saldo_balanca <- merge(expo_ano,impo_ano,by="CO_ANO") %>%
+  mutate(Saldo = expo_ano$Total_expo - impo_ano$Total_impo)
+
+```
+
+### Visualizando os dados
+
+#### Gráficos/tabelas
+
+```{r, echo=TRUE}
+
+# Resumo das estatísticas da balança comercial
+summary(saldo_balanca)
+
+```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# Série histórica da balança comercial brasileira
+
+ggplot(data = saldo_balanca, aes(CO_ANO)) + 
+  geom_line(aes(y = Total_expo/10^9, color = "Total_expo"), size = 1.5) +
+  geom_line(aes(y = Total_impo/10^9, color = "Total_impo"), size = 1.5) +
+  geom_line(aes(y = Saldo/10^9, color = "Saldo"), size = 1.5) +
+              xlab("Ano") +
+  ylab("US$ bilhões") +
+  ggtitle("Balança Comercial Brasileira (1997 a 2017)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1), plot.title = element_text(color="black", size=20, face="bold", margin = margin(10, 100, 10, 1))) +
+  scale_x_continuous(breaks = c(1997:2017), labels = c(as.character(1997:2017)))
+
+```
+
+
+```{r, echo=TRUE}
+
+# Resumo das estatísticas dos produtos exportados em 2017
+summary(principais_export_2017)
+
+```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# Principais produtos exportados em 2017
+
+ggplot() +
+  geom_col(aes(y = US_billions, x = reorder(NO_NCM_POR, -US_billions), fill = NO_NCM_POR), data = principais_export_2017) +
+  xlab("Produto") +
+  ylab("US$ bilhoes") +
+  ggtitle("Principais Produtos Exportados (2017)") +
+  theme(plot.title = element_text(color="black", size=20, face="bold", margin = margin(10, 100, 10, 1))) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1), legend.position = "none") +
+  geom_text(data = principais_export_2017, aes(y = US_billions, x = NO_NCM_POR, label = US_billions), vjust = 1.6, size = 5)
+
+```
+
+
+```{r, echo=TRUE}
+
+# Resumo das estatísticas dos produtos importados em 2017
+summary(principais_import_2017)
+
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+# Principais produtos importados em 2017
+
+ggplot() +
+  geom_col(aes(y = US_billions, x = reorder(NO_NCM_POR, -US_billions), fill = NO_NCM_POR), data = principais_import_2017) +
+  xlab("Produto") +
+  ylab("US$ bilhoes") +
+  ggtitle("Principais Produtos Importados (2017)") +
+  theme(plot.title = element_text(color="black", size=20, face="bold", margin = margin(10, 100, 10, 1))) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1), legend.position = "none") +
+  geom_text(data = principais_import_2017, aes(y = US_billions, x = NO_NCM_POR, label = US_billions), vjust = 1.6, size = 5)
+
+```
+
+
+```{r, echo=TRUE}
+
+# Resumo das estatísticas dos principais destinos em 2017
+summary(principais_export_2017)
+
+```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+# Principais destinos em 2017
+
+ggplot() +
+  geom_col(aes(y = US_billions, x = reorder(NO_PAIS, +US_billions), fill = NO_PAIS), data = expo_pais_2017) +
+  ylab("US$ bilhoes") +
+  xlab("País") +
+  coord_flip() +
+  ggtitle("Principais destinos das exportações brasileiras (2017)") +
+  theme(plot.title = element_text(color="black", size=15, face="bold", margin = margin(10, 100, 10, 1))) +
+  theme(axis.text.x = element_text(vjust = 1, hjust = 1), legend.position = "none") +
+  geom_text(data = expo_pais_2017, aes(y = US_billions, x = NO_PAIS, label = US_billions), vjust = 0.5, hjust = 1.0, size = 5)
+
+```
+
+
+```{r, echo=TRUE}
+# Resumo das estatísticas das principais origens em 2017
+summary(principais_import_2017)
+
+```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+# Principais origens em 2017
+
+ggplot() +
+  geom_col(aes(y = US_billions, x = reorder(NO_PAIS, +US_billions), fill = NO_PAIS), data = impo_pais_2017) +
+  ylab("US$ bilhoes") +
+  xlab("País") +
+  coord_flip() +
+  ggtitle("Principais países de origem das importações brasileiras (2017)") +
+  theme(plot.title = element_text(color="black", size=15, face="bold", margin = margin(10, 100, 10, 1))) +
+  theme(axis.text.x = element_text(vjust = 1, hjust = 1), legend.position = "none") +
+  geom_text(data = impo_pais_2017, aes(y = US_billions, x = NO_PAIS, label = US_billions), vjust = 0.5, hjust = 1.0, size = 5)
+
+```
+
+
+## Conclusões
+
+O Brail é bastante dependente da exportação de produtos primários, como minério de ferro e soja. Estes produtos apresentam baixo valor agregado, isto é, rendem pouco por tonelada produzida.
+
+Com efeito, os três primeiros produtos da pauta de exportação nacional são a soja, o minério de ferro e o petróleo bruto. O Brasil, assim, tem grande dificuldade de agregar valor aos seus produtos.
+
+Por outro lado, os três principais produtos da nossa pauta de importação são os aparelhos receptores de rádiodifusão (televisores), veículos automotivos e combustíveis.
+
+Os principais destinos das exportações brasileiras são China, EUA e Argentina. Estes mesmos países são, também, os maiores exportadores de produtos para o Brasil.
+
+Do ponto de vista de série histórica da Balança Comercial Brasileira ao longo dos últimos 20 (vinte) anos, destacamos que o Plano Real impulsionou a entrada de produtos estrangeiros no mercado brasileiro, via apreciação do câmbio, o que provocou a queda o preço dos produtos importados. 
+
+A partir de 2001, a balança comercial brasileira começou a apresentar superávits. Neste período foi adotado o câmbio flutuante, que desvalorizou o real perante o dólar, aumentando o volume de exportações brasileiras. Ainda, nosso país tornou-se um Global Trader, isto é, passou a negociar com todo o mundo, aumentando a área de alcance de suas mercadorias.
+
+Nos últimos anos, as crises econômica e política, relacionadas com o impeachment da presidente Dilma Rousseff, tem, de certa forma, auxiliado na estabilização do superávit brasileiro. Com a recessão, as compras do exterior tendem a diminuir. Podemos citar, ainda, a depreciação do câmbio, diminuindo o preço do produto brasileiro no exterior.
+
+
+
+
+
